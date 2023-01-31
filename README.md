@@ -1,1 +1,1 @@
-# evm-bridge-contracts
+# Initial working release of the Zenon TSS Bridge

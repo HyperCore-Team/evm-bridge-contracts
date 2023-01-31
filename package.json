@@ -1,0 +1,24 @@
+{
+  "name": "evm-bridge-contracts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^1.0.2",
+    "@nomiclabs/hardhat-ethers": "^2.0.3",
+    "@openzeppelin/hardhat-upgrades": "^1.9.0",
+    "@studydefi/money-legos": "^2.4.2",
+    "chai": "^4.3.6",
+    "ethers": "^5.5.2",
+    "hardhat": "^2.11.2",
+    "lodash.flatten": "^4.4.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.2.0",
+    "@openzeppelin/test-helpers": "^0.5.15",
+    "@uniswap/v2-core": "^1.0.1",
+    "ethereum-public-key-to-address": "^0.0.5"
+  }
+}
