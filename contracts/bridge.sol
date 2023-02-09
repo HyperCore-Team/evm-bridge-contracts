@@ -119,14 +119,15 @@ contract Bridge is Context {
         require(redeemsInfo[nonce].blockNumber != type(uint256).max, "redeem: Nonce already redeemed");
         require((redeemsInfo[nonce].blockNumber + tokensInfo[token].redeemDelayInBlocks) < block.number, "redeem: Not redeemable yet");
 
-        // todo change to block.chainId
-        // TODO Should we check the sig only at the first redeem step?
-        bytes32 messageHash = keccak256(abi.encode(networkType, uint256(31337), address(this), nonce, to, token, amount));
-        messageHash = messageHash.toEthSignedMessageHash();
-        address signer = messageHash.recover(signature);
-        require(signer == tssAddress, "redeem: Wrong signature");
-
         if (redeemsInfo[nonce].blockNumber == 0) {
+            // We only check the signature at the first redeem, on the second one we have only a check for the same parameters
+            // In case the tss key is changed, we don't need to resign the transaction for the second redeem
+            // todo change to block.chainId
+            bytes32 messageHash = keccak256(abi.encode(networkType, uint256(31337), address(this), nonce, to, token, amount));
+            messageHash = messageHash.toEthSignedMessageHash();
+            address signer = messageHash.recover(signature);
+            require(signer == tssAddress, "redeem: Wrong signature");
+
             redeemsInfo[nonce].blockNumber = block.number;
             redeemsInfo[nonce].paramsHash = keccak256(abi.encode(to, token, amount));
             emit RegisteredRedeem(nonce, to, token, amount);
@@ -172,6 +173,7 @@ contract Bridge is Context {
     }
 
     function setTokenInfo(address token, uint256 minAmount, uint256 redeemDelay, bool bridgeable, bool redeemable, bool isOwned) external onlyAdministrator {
+        require(redeemDelay > 2, "setTokenInfo: RedeemDelay is less than minimum");
         tokensInfo[token].minAmount = minAmount;
         tokensInfo[token].redeemDelayInBlocks = redeemDelay;
         tokensInfo[token].bridgeable = bridgeable;
