@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 struct TokenInfo {
     uint256 minAmount;
-    uint256 redeemDelayInBlocks;
+    uint256 redeemDelay;
     bool bridgeable;
     bool redeemable;
     bool owned; // whether or not we have mint rights on the token
@@ -32,51 +32,48 @@ contract Bridge is Context {
     event Unhalted();
     event RevokedRedeem(uint256 indexed nonce);
     event PendingAdministrator(address indexed newAdministrator);
-    event ChangedAdministrator(address indexed newAdministrator, address oldAdministrator);
-    event PendingTssAddress(address indexed newTssAddress);
-    event ChangedTssAddress(address indexed newTssAddress, address oldTssAddress);
+    event SetAdministrator(address indexed newAdministrator, address oldAdministrator);
+    event PendingTss(address indexed newTss);
+    event SetTss(address indexed newTss, address oldTss);
     event PendingGuardians();
-    event ChangedGuardians();
+    event SetGuardians();
+
+    uint256 constant uint256max = type(uint256).max;
+    uint32 private constant networkClass = 2;
+    uint8 private constant  minNominatedGuardians = 5;
+
+    uint64 public estimatedBlockTime;
+    uint64 public confirmationsToFinality;
+    bool public halted;
+    bool public allowKeyGen;
 
     address public administrator;
-    address public requestedAdministrator;
-    uint256 public administratorChangeBlock;
     uint256 public administratorDelay;
     uint256 public minAdministratorDelay;
 
-    address public tssAddress;
-    address public requestedTssAddress;
-    uint256 public tssAddressChangeBlock;
-    uint256 public changeTssAddressDelay;
-    uint256 public minTssAddressChangeDelay;
+    address public tss;
+    uint256 public softDelay;
+    uint256 public minSoftDelay;
 
     address[] public guardians;
     address[] public nominatedGuardians;
     address[] public guardiansVotes;
     mapping(address => uint) public votesCount;
-    uint256 public guardianChangeBlock;
-    uint8 private constant  minNominatedGuardians = 5;
-    // same delay as change administrator
+    // same delay as set administrator
 
     uint256 public unhaltedAt;
-    uint256 public unhaltDurationInBlocks;
-    uint256 public minUnhaltDurationInBlocks;
+    uint256 public unhaltDuration;
+    uint256 public minUnhaltDuration;
     uint256 public actionsNonce;
     uint256 public contractDeploymentHeight;
-    uint64 public estimatedBlockTime;
-    uint64 public confirmationsToFinality;
-
-    uint32 private constant networkType = 2;
-    bool public halted;
-    bool public allowKeyGen;
 
     mapping(uint256 => RedeemInfo) public redeemsInfo;
     mapping(address => TokenInfo) public tokensInfo;
+    mapping(string => RedeemInfo) public timeChallengesInfo;
 
-    // todo check that tssAddress is != 0?
     modifier isNotHalted() {
         require(halted == false, "bridge: Is halted");
-        require(unhaltedAt + unhaltDurationInBlocks < block.number, "bridge: Is halted");
+        require(unhaltedAt + unhaltDuration < block.number, "bridge: Is halted");
         _;
     }
 
@@ -85,18 +82,18 @@ contract Bridge is Context {
         _;
     }
 
-    constructor(uint256 unhaltDuration, uint256 administratorDelayParam, uint256 tssDelay, uint64 blockTime, uint64 confirmations, address[] memory initialGuardians) {
+    constructor(uint256 unhaltDurationParam, uint256 administratorDelayParam, uint256 softDelayParam, uint64 blockTime, uint64 confirmations, address[] memory initialGuardians) {
         administrator = _msgSender();
-        emit ChangedAdministrator(administrator, address(0));
+        emit SetAdministrator(administrator, address(0));
 
-        minUnhaltDurationInBlocks = unhaltDuration;
-        unhaltDurationInBlocks = minUnhaltDurationInBlocks;
+        minUnhaltDuration = unhaltDurationParam;
+        unhaltDuration = minUnhaltDuration;
 
         minAdministratorDelay = administratorDelayParam;
         administratorDelay = minAdministratorDelay;
 
-        minTssAddressChangeDelay = tssDelay;
-        changeTssAddressDelay = minTssAddressChangeDelay;
+        minSoftDelay = softDelayParam;
+        softDelay = minSoftDelay;
 
         for(uint i = 0; i < initialGuardians.length; i++) {
             guardians.push(initialGuardians[i]);
@@ -109,24 +106,23 @@ contract Bridge is Context {
     }
 
     function isHalted() view public returns (bool) {
-        return halted || (unhaltedAt + unhaltDurationInBlocks >= block.number);
+        return halted || (unhaltedAt + unhaltDuration >= block.number);
     }
 
     // implement restrictions for amount
-    // todo uint256max to const
     function redeem(address to, address token, uint256 amount, uint256 nonce, bytes memory signature) external isNotHalted {
         require(tokensInfo[token].redeemable == true, "redeem: Token not redeemable");
-        require(redeemsInfo[nonce].blockNumber != type(uint256).max, "redeem: Nonce already redeemed");
-        require((redeemsInfo[nonce].blockNumber + tokensInfo[token].redeemDelayInBlocks) < block.number, "redeem: Not redeemable yet");
+        require(redeemsInfo[nonce].blockNumber != uint256max, "redeem: Nonce already redeemed");
+        require((redeemsInfo[nonce].blockNumber + tokensInfo[token].redeemDelay) < block.number, "redeem: Not redeemable yet");
 
         if (redeemsInfo[nonce].blockNumber == 0) {
             // We only check the signature at the first redeem, on the second one we have only a check for the same parameters
             // In case the tss key is changed, we don't need to resign the transaction for the second redeem
             // todo change to block.chainId
-            bytes32 messageHash = keccak256(abi.encode(networkType, uint256(31337), address(this), nonce, to, token, amount));
+            bytes32 messageHash = keccak256(abi.encode(networkClass, uint256(31337), address(this), nonce, to, token, amount));
             messageHash = messageHash.toEthSignedMessageHash();
             address signer = messageHash.recover(signature);
-            require(signer == tssAddress, "redeem: Wrong signature");
+            require(signer == tss, "redeem: Wrong signature");
 
             redeemsInfo[nonce].blockNumber = block.number;
             redeemsInfo[nonce].paramsHash = keccak256(abi.encode(to, token, amount));
@@ -134,8 +130,8 @@ contract Bridge is Context {
         } else {
             require(redeemsInfo[nonce].paramsHash == keccak256(abi.encode(to, token, amount)), "redeem: Second redeem has a different params than the first one");
 
-            // it cannot be type(uint256).max or in delay
-            redeemsInfo[nonce].blockNumber = type(uint256).max;
+            // it cannot be uint256max or in delay
+            redeemsInfo[nonce].blockNumber = uint256max;
             // if we have ownership of the token then it means that this token is wrapped and we should have mint rights on it
             if (tokensInfo[token].owned) {
                 // we should have 0 balance of this wrapped token, they are only distributed to people, unless someone sent to this contract
@@ -155,6 +151,9 @@ contract Bridge is Context {
     function unwrap(address token, uint256 amount, string memory to) external isNotHalted {
         require(tokensInfo[token].bridgeable == true, "unwrap: Token not bridgeable");
         require(amount >= tokensInfo[token].minAmount, "unwrap: Amount has to be greater then the token minAmount");
+        // In case a user inserts the wrong address length this won't work, in case someone inserts characters encoded from multiple
+        // bytes the orchestrator won't process it and even if so, he won't be able to redeem it on the znn network
+        require(bytes(to).length == 40, "unwrap: Invalid zenon address length");
 
         uint256 oldBalance = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(_msgSender(), address(this), amount);
@@ -172,10 +171,32 @@ contract Bridge is Context {
         emit Unwrapped(_msgSender(), token, to, amount);
     }
 
+    function timeChallenge(string memory methodName, bytes32 paramsHash, uint256 challengeDelay) internal {
+        if (timeChallengesInfo[methodName].paramsHash == paramsHash) {
+            if (timeChallengesInfo[methodName].blockNumber + challengeDelay >= block.number) {
+                revert("challenge not due");
+            }
+            // otherwise the challenge is due and we reset it
+            delete timeChallengesInfo[methodName].paramsHash;
+        } else {
+            // we start a new challenge
+            timeChallengesInfo[methodName].paramsHash = paramsHash;
+            timeChallengesInfo[methodName].blockNumber = block.number;
+        }
+    }
+
     function setTokenInfo(address token, uint256 minAmount, uint256 redeemDelay, bool bridgeable, bool redeemable, bool isOwned) external onlyAdministrator {
         require(redeemDelay > 2, "setTokenInfo: RedeemDelay is less than minimum");
+
+        bytes32 paramsHash = keccak256(abi.encode(token, minAmount, redeemDelay, bridgeable, redeemable, isOwned));
+        timeChallenge("setTokenInfo", paramsHash, softDelay);
+        // early return for when we have a new challenge
+        if (timeChallengesInfo["setTokenInfo"].paramsHash != bytes32(0)) {
+            return;
+        }
+
         tokensInfo[token].minAmount = minAmount;
-        tokensInfo[token].redeemDelayInBlocks = redeemDelay;
+        tokensInfo[token].redeemDelay = redeemDelay;
         tokensInfo[token].bridgeable = bridgeable;
         tokensInfo[token].redeemable = redeemable;
         tokensInfo[token].owned = isOwned;
@@ -184,10 +205,10 @@ contract Bridge is Context {
     function halt(bytes memory signature) external {
         if (_msgSender() != administrator) {
             // todo change to block.chainid
-            bytes32 messageHash = keccak256(abi.encode("halt", networkType, uint256(31337), address(this), actionsNonce));
+            bytes32 messageHash = keccak256(abi.encode("halt", networkClass, uint256(31337), address(this), actionsNonce));
             messageHash = messageHash.toEthSignedMessageHash();
             address signer = messageHash.recover(signature);
-            require(signer == tssAddress, "halt: Wrong signature");
+            require(signer == tss, "halt: Wrong signature");
             actionsNonce += 1;
         }
 
@@ -206,74 +227,63 @@ contract Bridge is Context {
     // This method would be called if we detect a redeem transaction that did not originated from a user embedded bridge call on the znn network
     function revokeRedeems(uint256[] memory nonces) external onlyAdministrator {
         for(uint i = 0; i < nonces.length; i++) {
-            redeemsInfo[nonces[i]].blockNumber = type(uint256).max;
+            redeemsInfo[nonces[i]].blockNumber = uint256max;
             emit RevokedRedeem(nonces[i]);
         }
     }
 
-    function changeAdministrator(address newAdministrator) external onlyAdministrator {
-        require(newAdministrator != address(0), "changeAdministrator: Invalid administrator address");
+    function setAdministrator(address newAdministrator) external onlyAdministrator {
+        require(newAdministrator != address(0), "setAdministrator: Invalid administrator address");
 
-        if (requestedAdministrator == newAdministrator) {
-            if (administratorChangeBlock + administratorDelay < block.number) {
-                emit ChangedAdministrator(newAdministrator, administrator);
-                administrator = newAdministrator;
-                requestedAdministrator = address(0);
-            } else {
-                revert("changeAdministrator: address change not due");
-            }
-        } else {
-            requestedAdministrator = newAdministrator;
-            administratorChangeBlock = block.number;
-            emit PendingAdministrator(requestedAdministrator);
+        bytes32 paramsHash = keccak256(abi.encode(newAdministrator));
+        timeChallenge("setAdministrator", paramsHash, administratorDelay);
+        // early return for when we have a new challenge
+        if (timeChallengesInfo["setAdministrator"].paramsHash != bytes32(0)) {
+            return;
         }
+
+        emit SetAdministrator(newAdministrator, administrator);
+        administrator = newAdministrator;
     }
 
-    function changeTssAddress(address newTssAddress, bytes memory oldSignature, bytes memory newSignature) external  {
-        require(newTssAddress != address(0), "changeTssAddress: Invalid newTssAddress");
+    function setTss(address newTss, bytes memory oldSignature, bytes memory newSignature) external  {
+        require(newTss != address(0), "setTss: Invalid newTss");
 
         if (_msgSender() != administrator) {
             // this only applies for non administrator calls
-            require(allowKeyGen == true, "changeTssAddress: KeyGen is not allowed");
-            require(!isHalted());
+            require(allowKeyGen == true, "setTss: KeyGen is not allowed");
+            require(!isHalted(), "setTss: Bridge halted");
             allowKeyGen = false;
 
             // todo change to block.chainId
-            bytes32 messageHash = keccak256(abi.encode("changeTssAddress", networkType, uint256(31337), address(this), actionsNonce, newTssAddress));
+            bytes32 messageHash = keccak256(abi.encode("setTss", networkClass, uint256(31337), address(this), actionsNonce, newTss));
             messageHash = messageHash.toEthSignedMessageHash();
             address signer = messageHash.recover(oldSignature);
-            require(signer == tssAddress, "changeTssAddress: Wrong old signature");
+            require(signer == tss, "setTss: Wrong old signature");
 
             signer = messageHash.recover(newSignature);
-            require(signer == newTssAddress, "changeTssAddress: Wrong new signature");
+            require(signer == newTss, "setTss: Wrong new signature");
 
             actionsNonce += 1;
         } else {
-            if (requestedTssAddress == newTssAddress) {
-                // this is ok, we can change the pub key and reset the requestedTssAddress
-                if (tssAddressChangeBlock + changeTssAddressDelay < block.number) {
-                    requestedTssAddress = address(0);
-                } else {
-                    revert("changeTssAddress: address change not due");
-                }
-            } else {
-                requestedTssAddress = newTssAddress;
-                tssAddressChangeBlock = block.number;
-                emit PendingTssAddress(newTssAddress);
+            bytes32 paramsHash = keccak256(abi.encode(newTss));
+            timeChallenge("setTss", paramsHash, softDelay);
+            // early return for when we have a new challenge
+            if (timeChallengesInfo["setTss"].paramsHash != bytes32(0)) {
                 return;
             }
         }
 
-        emit ChangedTssAddress(newTssAddress, tssAddress);
-        tssAddress = newTssAddress;
+        emit SetTss(newTss, tss);
+        tss = newTss;
     }
 
     function emergency() external onlyAdministrator {
-        emit ChangedAdministrator(address(0), administrator);
+        emit SetAdministrator(address(0), administrator);
         administrator = address(0);
 
-        emit ChangedTssAddress(address(0), tssAddress);
-        tssAddress = address(0);
+        emit SetTss(address(0), tss);
+        tss = address(0);
 
         halted = true;
         emit Halted();
@@ -282,29 +292,11 @@ contract Bridge is Context {
     function nominateGuardians(address[] memory newGuardians) external onlyAdministrator {
         require(newGuardians.length >= minNominatedGuardians, "nominateGuardians: length less than min");
 
-        bool same = (newGuardians.length == nominatedGuardians.length);
-        if (same) {
-            for (uint i = 0; i < newGuardians.length; i++) {
-                require(newGuardians[i] != address(0), "nominateGuardians: invalid guardian");
-                same = same && (newGuardians[i] == nominatedGuardians[i]); // we require the same order
-            }
-        }
-
-        if (same) {
-            if (guardianChangeBlock + administratorDelay < block.number) {
-                for (uint i = 0; i < guardians.length; i++) {
-                    delete votesCount[guardiansVotes[i]];
-                }
-                delete guardiansVotes;
-                delete guardians;
-                delete nominatedGuardians;
-                for (uint i = 0; i < newGuardians.length; i++) {
-                    guardians.push(newGuardians[i]);
-                    guardiansVotes.push(address(0));
-                }
-                emit ChangedGuardians();
-            }
-        } else {
+        bytes32 paramsHash = keccak256(abi.encode(newGuardians));
+        timeChallenge("nominateGuardians", paramsHash, administratorDelay);
+        // early return for when we have a new challenge
+        if (timeChallengesInfo["nominateGuardians"].paramsHash != bytes32(0)) {
+            // we check for duplicates only on new challenges
             for (uint i = 0; i < newGuardians.length; i++) {
                 for(uint j = i + 1; j < newGuardians.length; j++) {
                     if(newGuardians[i] == newGuardians[j]) {
@@ -312,14 +304,20 @@ contract Bridge is Context {
                     }
                 }
             }
-
-            delete nominatedGuardians;
-            for (uint i = 0; i < newGuardians.length; i++) {
-                nominatedGuardians.push(newGuardians[i]);
-            }
-            guardianChangeBlock = block.number;
-            emit PendingGuardians();
+            return;
         }
+
+        for (uint i = 0; i < guardians.length; i++) {
+            delete votesCount[guardiansVotes[i]];
+        }
+        delete guardiansVotes;
+        delete guardians;
+        delete nominatedGuardians;
+        for (uint i = 0; i < newGuardians.length; i++) {
+            guardians.push(newGuardians[i]);
+            guardiansVotes.push(address(0));
+        }
+        emit SetGuardians();
     }
 
     function proposeAdministrator(address newAdministrator) external {
@@ -340,21 +338,21 @@ contract Bridge is Context {
                         guardiansVotes[j] = address(0);
                     }
                     administrator = newAdministrator;
-                    emit ChangedAdministrator(administrator, address(0));
+                    emit SetAdministrator(administrator, address(0));
                 }
                 break;
             }
         }
     }
 
-    function setChangeTssAddressDelay(uint256 delay) external onlyAdministrator {
-        require(delay >= minTssAddressChangeDelay, "setChangeTssAddressDelay: Delay is less than minimum");
-        changeTssAddressDelay = delay;
+    function setSoftDelay(uint256 delay) external onlyAdministrator {
+        require(delay >= minSoftDelay, "setSoftDelay: Delay is less than minimum");
+        softDelay = delay;
     }
 
     function setUnhaltDuration(uint256 duration) external onlyAdministrator {
-        require(duration >= minUnhaltDurationInBlocks, "setUnhaltDuration: New duration is smaller than the minimum one");
-        unhaltDurationInBlocks = duration;
+        require(duration >= minUnhaltDuration, "setUnhaltDuration: New duration is smaller than the minimum one");
+        unhaltDuration = duration;
     }
 
     function setEstimatedBlockTime(uint64 blockTime) external onlyAdministrator {

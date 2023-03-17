@@ -21,7 +21,7 @@ async function unwrap() {
 
     if(allowance.lt(unwrapAmount)) {
         // let toAllow = unwrapAmount.sub(allowance);
-        // just allow all for tests
+        // just allow all for test
         let toAllow = oldTokenBalance;
         let allowanceGas = await token.connect(user1).estimateGas.increaseAllowance(bridge.address, toAllow);
 

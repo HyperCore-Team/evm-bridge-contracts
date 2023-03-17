@@ -23,7 +23,7 @@ module.exports = {
       loggingEnabled: true,
       mining: {
         auto: false,
-        interval: 3500
+        interval: 2000
       }
     }
   },
@@ -40,7 +40,7 @@ module.exports = {
         }
       },
       {
-        version: "0.8.17",
+        version: "0.8.19",
         settings: {
           optimizer: {
             enabled: true,

@@ -7,23 +7,23 @@ async function change() {
     const accounts = await hre.ethers.getSigners();
     let owner = accounts[1];
     const bridge = await ethers.getContractAt("Bridge", constants.bridgeAddress);
-    console.log(await bridge.tssAddress());
-    let tssAddress = publicKeyToAddress(Buffer.from('', 'base64'))
-    let changeTssGas = await bridge.connect(owner).estimateGas.changeTssAddress(tssAddress, "0x", "0x")
-    let changeTssTx = await bridge.connect(owner).changeTssAddress(tssAddress, "0x", "0x")
-    await changeTssTx.wait();
+    console.log(await bridge.tss());
+    let tss = publicKeyToAddress(Buffer.from('', 'base64'))
+    let setTssGas = await bridge.connect(owner).estimateGas.setTss(tss, "0x", "0x")
+    let setTssTx = await bridge.connect(owner).setTss(tss, "0x", "0x")
+    await setTssTx.wait();
 
-    console.log(await bridge.timeChallengesInfo("changeTssAddress"));
+    console.log(await bridge.timeChallengesInfo("setTss"));
 
     await constants.sleep(10 * 1000)
 
-    changeTssGas = await bridge.connect(owner).estimateGas.changeTssAddress(tssAddress, "0x", "0x")
-    changeTssTx = await bridge.connect(owner).changeTssAddress(tssAddress, "0x", "0x")
-    await changeTssTx.wait();
+    setTssGas = await bridge.connect(owner).estimateGas.setTss(tss, "0x", "0x")
+    setTssTx = await bridge.connect(owner).setTss(tss, "0x", "0x")
+    await setTssTx.wait();
 
-    console.log(await bridge.timeChallengesInfo("changeTssAddress"));
+    console.log(await bridge.timeChallengesInfo("setTss"));
 
-    console.log(await bridge.tssAddress());
+    console.log(await bridge.tss());
 }
 
 change()
