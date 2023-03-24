@@ -16,18 +16,18 @@ async function change() {
         const accounts = await hre.ethers.getSigners();
         let owner = accounts[1];
         const bridge = await ethers.getContractAt("Bridge", constants.bridgeAddress);
-        let currentTssAddress = await bridge.tssAddress();
-        console.log("currentTssAddress", currentTssAddress);
-        let tssAddress = publicKeyToAddress(Buffer.from(tssPubKeyB64, 'base64'))
-        console.log("new tssAddress", tssAddress);
-        if(tssAddress == currentTssAddress) {
+        let currentTss = await bridge.tss();
+        console.log("currentTss", currentTss);
+        let tss = publicKeyToAddress(Buffer.from(tssPubKeyB64, 'base64'))
+        console.log("new tss", tss);
+        if(tss === currentTss) {
             console.log("address didn't change");
             return;
         }
-        let changeTssGas = await bridge.connect(owner).estimateGas.changeTssAddress(tssAddress, "0x")
-        let changeTssTx = await bridge.connect(owner).changeTssAddress(tssAddress, "0x")
-        await changeTssTx.wait();
-        console.log(await bridge.tssAddress());
+        let setTssGas = await bridge.connect(owner).estimateGas.setTss(tss, "0x")
+        let setTssTx = await bridge.connect(owner).setTss(tss, "0x")
+        await setTssTx.wait();
+        console.log(await bridge.tss());
     });
 }
 

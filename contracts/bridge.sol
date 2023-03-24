@@ -13,12 +13,16 @@ struct TokenInfo {
     uint256 redeemDelay;
     bool bridgeable;
     bool redeemable;
-    bool owned; // whether or not we have mint rights on the token
+    bool owned; // whether or not the bridge has mint rights on the token
 }
 
 struct RedeemInfo {
     uint256 blockNumber;
     bytes32 paramsHash;
+}
+
+interface IOwned {
+    function owner() external view returns (address);
 }
 
 contract Bridge is Context {
@@ -30,6 +34,8 @@ contract Bridge is Context {
     event Unwrapped(address indexed from, address indexed token, string to, uint256 amount);
     event Halted();
     event Unhalted();
+    event PendingTokenInfo(address indexed token);
+    event SetTokenInfo(address indexed token);
     event RevokedRedeem(uint256 indexed nonce);
     event PendingAdministrator(address indexed newAdministrator);
     event SetAdministrator(address indexed newAdministrator, address oldAdministrator);
@@ -56,7 +62,6 @@ contract Bridge is Context {
     uint256 public minSoftDelay;
 
     address[] public guardians;
-    address[] public nominatedGuardians;
     address[] public guardiansVotes;
     mapping(address => uint) public votesCount;
     // same delay as set administrator
@@ -128,13 +133,13 @@ contract Bridge is Context {
             redeemsInfo[nonce].paramsHash = keccak256(abi.encode(to, token, amount));
             emit RegisteredRedeem(nonce, to, token, amount);
         } else {
-            require(redeemsInfo[nonce].paramsHash == keccak256(abi.encode(to, token, amount)), "redeem: Second redeem has a different params than the first one");
+            require(redeemsInfo[nonce].paramsHash == keccak256(abi.encode(to, token, amount)), "redeem: Second redeem has different params than the first one");
 
             // it cannot be uint256max or in delay
             redeemsInfo[nonce].blockNumber = uint256max;
-            // if we have ownership of the token then it means that this token is wrapped and we should have mint rights on it
+            // if the bridge has ownership of the token then it means that this token is wrapped and it should have mint rights on it
             if (tokensInfo[token].owned) {
-                // we should have 0 balance of this wrapped token, they are only distributed to people, unless someone sent to this contract
+                // bridge should have 0 balance of this wrapped token, they are only distributed to people, unless someone sent to this contract
                 // mint the needed amount
                 bytes memory payload = abi.encodeWithSignature("mint(uint256)", amount);
                 (bool success, ) = token.call(payload);
@@ -153,7 +158,7 @@ contract Bridge is Context {
         require(amount >= tokensInfo[token].minAmount, "unwrap: Amount has to be greater then the token minAmount");
         // In case a user inserts the wrong address length this won't work, in case someone inserts characters encoded from multiple
         // bytes the orchestrator won't process it and even if so, he won't be able to redeem it on the znn network
-        require(bytes(to).length == 40, "unwrap: Invalid zenon address length");
+        require(bytes(to).length == 40, "unwrap: Invalid NoM address length");
 
         uint256 oldBalance = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(_msgSender(), address(this), amount);
@@ -162,12 +167,18 @@ contract Bridge is Context {
         require(newBalance - amount == oldBalance, "unwrap: Tokens not sent");
 
         // if we have ownership to this token, we will burn because we can mint on redeem, otherwise we just keep the tokens
+        // double check the ownership so we don't burn in case owned is set to true by mistake
         if (tokensInfo[token].owned) {
-            bytes memory payload = abi.encodeWithSignature("burn(uint256)", amount);
-            (bool success, ) = token.call(payload);
-            require(success, "unwrap: Burn call failed");
+            try IOwned(token).owner() {
+                if(IOwned(token).owner() == address(this)) {
+                    bytes memory payload = abi.encodeWithSignature("burn(uint256)", amount);
+                    (bool success, ) = token.call(payload);
+                    require(success, "unwrap: Burn call failed");
+                }
+            } catch {
+                revert("unwrap: Owner call failed");
+            }
         }
-
         emit Unwrapped(_msgSender(), token, to, amount);
     }
 
@@ -192,6 +203,7 @@ contract Bridge is Context {
         timeChallenge("setTokenInfo", paramsHash, softDelay);
         // early return for when we have a new challenge
         if (timeChallengesInfo["setTokenInfo"].paramsHash != bytes32(0)) {
+            emit PendingTokenInfo(token);
             return;
         }
 
@@ -200,6 +212,7 @@ contract Bridge is Context {
         tokensInfo[token].bridgeable = bridgeable;
         tokensInfo[token].redeemable = redeemable;
         tokensInfo[token].owned = isOwned;
+        emit SetTokenInfo(token);
     }
 
     function halt(bytes memory signature) external {
@@ -239,6 +252,7 @@ contract Bridge is Context {
         timeChallenge("setAdministrator", paramsHash, administratorDelay);
         // early return for when we have a new challenge
         if (timeChallengesInfo["setAdministrator"].paramsHash != bytes32(0)) {
+            emit PendingAdministrator(newAdministrator);
             return;
         }
 
@@ -270,6 +284,7 @@ contract Bridge is Context {
             timeChallenge("setTss", paramsHash, softDelay);
             // early return for when we have a new challenge
             if (timeChallengesInfo["setTss"].paramsHash != bytes32(0)) {
+                emit PendingTss(newTss);
                 return;
             }
         }
@@ -290,7 +305,7 @@ contract Bridge is Context {
     }
 
     function nominateGuardians(address[] memory newGuardians) external onlyAdministrator {
-        require(newGuardians.length >= minNominatedGuardians, "nominateGuardians: length less than min");
+        require(newGuardians.length >= minNominatedGuardians, "nominateGuardians: Length less than minimum");
 
         bytes32 paramsHash = keccak256(abi.encode(newGuardians));
         timeChallenge("nominateGuardians", paramsHash, administratorDelay);
@@ -298,12 +313,16 @@ contract Bridge is Context {
         if (timeChallengesInfo["nominateGuardians"].paramsHash != bytes32(0)) {
             // we check for duplicates only on new challenges
             for (uint i = 0; i < newGuardians.length; i++) {
+                if(newGuardians[i] == address(0)) {
+                    revert("nominateGuardians: Found zero address");
+                }
                 for(uint j = i + 1; j < newGuardians.length; j++) {
                     if(newGuardians[i] == newGuardians[j]) {
-                        revert("found duplicated guardian");
+                        revert("nominateGuardians: Found duplicated guardian");
                     }
                 }
             }
+            emit PendingGuardians();
             return;
         }
 
@@ -312,7 +331,6 @@ contract Bridge is Context {
         }
         delete guardiansVotes;
         delete guardians;
-        delete nominatedGuardians;
         for (uint i = 0; i < newGuardians.length; i++) {
             guardians.push(newGuardians[i]);
             guardiansVotes.push(address(0));
@@ -351,7 +369,7 @@ contract Bridge is Context {
     }
 
     function setUnhaltDuration(uint256 duration) external onlyAdministrator {
-        require(duration >= minUnhaltDuration, "setUnhaltDuration: New duration is smaller than the minimum one");
+        require(duration >= minUnhaltDuration, "setUnhaltDuration: Duration is less than minimum");
         unhaltDuration = duration;
     }
 
