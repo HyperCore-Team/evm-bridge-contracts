@@ -8,6 +8,7 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^1.0.2",
     "@nomiclabs/hardhat-ethers": "^2.0.3",
+    "@nomiclabs/hardhat-solhint": "^3.0.0",
     "@openzeppelin/hardhat-upgrades": "^1.9.0",
     "@studydefi/money-legos": "^2.4.2",
     "chai": "^4.3.6",

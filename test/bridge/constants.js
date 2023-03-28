@@ -426,6 +426,12 @@ async function setSoftDelay(administrator, delay) {
     await expect(await bridge.softDelay()).to.be.equal(BigNumber.from(delay));
 }
 
+async function setAdministratorDelay(administrator, delay) {
+    let setAdministratorDelayTx = await bridge.connect(administrator).setAdministratorDelay(delay);
+    await setAdministratorDelayTx.wait();
+    await expect(await bridge.administratorDelay()).to.be.equal(BigNumber.from(delay));
+}
+
 async function setUnhaltDuration(administrator, duration) {
     let setUnhaltDurationTx = await bridge.connect(administrator).setUnhaltDuration(duration);
     await setUnhaltDurationTx.wait();
@@ -566,6 +572,7 @@ module.exports = {
     setAdministrator,
     unhalt,
     setSoftDelay,
+    setAdministratorDelay,
     setUnhaltDuration,
     setEstimatedBlockTime,
     setAllowKeyGen,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
@@ -19,10 +19,6 @@ struct TokenInfo {
 struct RedeemInfo {
     uint256 blockNumber;
     bytes32 paramsHash;
-}
-
-interface IOwned {
-    function owner() external view returns (address);
 }
 
 contract Bridge is Context {
@@ -55,11 +51,11 @@ contract Bridge is Context {
 
     address public administrator;
     uint256 public administratorDelay;
-    uint256 public minAdministratorDelay;
+    uint256 public immutable minAdministratorDelay;
 
     address public tss;
     uint256 public softDelay;
-    uint256 public minSoftDelay;
+    uint256 public immutable minSoftDelay;
 
     address[] public guardians;
     address[] public guardiansVotes;
@@ -68,16 +64,16 @@ contract Bridge is Context {
 
     uint256 public unhaltedAt;
     uint256 public unhaltDuration;
-    uint256 public minUnhaltDuration;
+    uint256 public immutable minUnhaltDuration;
     uint256 public actionsNonce;
-    uint256 public contractDeploymentHeight;
+    uint256 public immutable contractDeploymentHeight;
 
     mapping(uint256 => RedeemInfo) public redeemsInfo;
     mapping(address => TokenInfo) public tokensInfo;
     mapping(string => RedeemInfo) public timeChallengesInfo;
 
     modifier isNotHalted() {
-        require(halted == false, "bridge: Is halted");
+        require(!halted, "bridge: Is halted");
         require(unhaltedAt + unhaltDuration < block.number, "bridge: Is halted");
         _;
     }
@@ -92,13 +88,13 @@ contract Bridge is Context {
         emit SetAdministrator(administrator, address(0));
 
         minUnhaltDuration = unhaltDurationParam;
-        unhaltDuration = minUnhaltDuration;
+        unhaltDuration = unhaltDurationParam;
 
         minAdministratorDelay = administratorDelayParam;
-        administratorDelay = minAdministratorDelay;
+        administratorDelay = administratorDelayParam;
 
         minSoftDelay = softDelayParam;
-        softDelay = minSoftDelay;
+        softDelay = softDelayParam;
 
         for(uint i = 0; i < initialGuardians.length; i++) {
             guardians.push(initialGuardians[i]);
@@ -116,7 +112,7 @@ contract Bridge is Context {
 
     // implement restrictions for amount
     function redeem(address to, address token, uint256 amount, uint256 nonce, bytes memory signature) external isNotHalted {
-        require(tokensInfo[token].redeemable == true, "redeem: Token not redeemable");
+        require(tokensInfo[token].redeemable, "redeem: Token not redeemable");
         require(redeemsInfo[nonce].blockNumber != uint256max, "redeem: Nonce already redeemed");
         require((redeemsInfo[nonce].blockNumber + tokensInfo[token].redeemDelay) < block.number, "redeem: Not redeemable yet");
 
@@ -154,7 +150,7 @@ contract Bridge is Context {
     }
 
     function unwrap(address token, uint256 amount, string memory to) external isNotHalted {
-        require(tokensInfo[token].bridgeable == true, "unwrap: Token not bridgeable");
+        require(tokensInfo[token].bridgeable, "unwrap: Token not bridgeable");
         require(amount >= tokensInfo[token].minAmount, "unwrap: Amount has to be greater then the token minAmount");
         // In case a user inserts the wrong address length this won't work, in case someone inserts characters encoded from multiple
         // bytes the orchestrator won't process it and even if so, he won't be able to redeem it on the znn network
@@ -163,14 +159,14 @@ contract Bridge is Context {
         uint256 oldBalance = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(_msgSender(), address(this), amount);
         uint256 newBalance = IERC20(token).balanceOf(address(this));
-        require(amount <= newBalance, "unwrap: amount bigger than the new balance");
+        require(amount <= newBalance, "unwrap: Amount bigger than the new balance");
         require(newBalance - amount == oldBalance, "unwrap: Tokens not sent");
 
         // if we have ownership to this token, we will burn because we can mint on redeem, otherwise we just keep the tokens
         // double check the ownership so we don't burn in case owned is set to true by mistake
         if (tokensInfo[token].owned) {
-            try IOwned(token).owner() {
-                if(IOwned(token).owner() == address(this)) {
+            try Ownable(token).owner() returns (address owner) {
+                if(owner == address(this)) {
                     bytes memory payload = abi.encodeWithSignature("burn(uint256)", amount);
                     (bool success, ) = token.call(payload);
                     require(success, "unwrap: Burn call failed");
@@ -230,7 +226,7 @@ contract Bridge is Context {
     }
 
     function unhalt() external onlyAdministrator {
-        require(halted == true, "unhalt: halted is false");
+        require(halted, "unhalt: halted is false");
 
         halted = false;
         unhaltedAt = block.number;
@@ -265,7 +261,7 @@ contract Bridge is Context {
 
         if (_msgSender() != administrator) {
             // this only applies for non administrator calls
-            require(allowKeyGen == true, "setTss: KeyGen is not allowed");
+            require(allowKeyGen, "setTss: KeyGen is not allowed");
             require(!isHalted(), "setTss: Bridge halted");
             allowKeyGen = false;
 
@@ -361,6 +357,11 @@ contract Bridge is Context {
                 break;
             }
         }
+    }
+
+    function setAdministratorDelay(uint256 delay) external onlyAdministrator {
+        require(delay >= minAdministratorDelay, "setAdministratorDelay: Delay is less than minimum");
+        administratorDelay = delay;
     }
 
     function setSoftDelay(uint256 delay) external onlyAdministrator {

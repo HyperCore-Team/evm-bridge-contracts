@@ -4,6 +4,7 @@ const c = require("./constants.js");
 
 describe("Setters", function () {
     let softDelay = 18;
+    let administratorDelay = 35;
     let unhaltDuration = 17;
     let estimatedBlockTime = 7;
     let confirmationsToFinality = 13;
@@ -26,6 +27,22 @@ describe("Setters", function () {
 
         it("Should set soft delay", async function () {
             await c.setSoftDelay(c.administrator(), softDelay);
+        });
+    })
+
+    describe("SetAdministratorDelay", function () {
+        it("Should revert if calling with non admin", async function () {
+            await expect(c.bridge().connect(c.user1()).setAdministratorDelay(softDelay)).
+            to.be.revertedWith("bridge: Caller not administrator")
+        });
+
+        it("Should revert if calling with value less than min", async function () {
+            await expect(c.bridge().connect(c.administrator()).setAdministratorDelay(20)).
+            to.be.revertedWith("setAdministratorDelay: Delay is less than minimum")
+        });
+
+        it("Should set administrator delay", async function () {
+            await c.setAdministratorDelay(c.administrator(), administratorDelay);
         });
     })
 

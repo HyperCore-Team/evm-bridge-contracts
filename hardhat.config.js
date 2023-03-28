@@ -1,6 +1,7 @@
 require('@openzeppelin/hardhat-upgrades');
 require("@nomicfoundation/hardhat-chai-matchers");
 require('solidity-coverage');
+require("@nomiclabs/hardhat-solhint");
 
 // This is a sample Hardhat task. To learn how to create your own go to
 // https://hardhat.org/guides/create-task.html
