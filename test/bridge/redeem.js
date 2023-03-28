@@ -108,4 +108,19 @@ describe("Redeem", function() {
         await expect(c.bridge().connect(c.user1()).redeem(c.user1().address, c.ownedToken1().address, notOwnedAmount, nonce, signature)).
         to.be.revertedWith("redeem: Token not redeemable");
     });
+
+    it("Should not redeem and mint a token without rights even if owned is set to true", async function () {
+        await c.setTokenInfo(c.administrator(), c.notOwnedToken1().address, BigNumber.from(100), 15, true, true, true, c.softDelay);
+        let tokenInfo = await c.bridge().tokensInfo(c.notOwnedToken1().address);
+        await expect(tokenInfo.owned)
+
+        let signature = await c.getRedeemSignature(c.tss(), c.bridge().address, c.user1().address, c.notOwnedToken1().address, notOwnedAmount, nonce);
+        let redeemTx = await c.bridge().connect(c.user1()).redeem(c.user1().address, c.notOwnedToken1().address, notOwnedAmount, nonce, signature);
+        await redeemTx.wait();
+
+        await c.mineBlocks(16);
+        await expect(c.bridge().connect(c.user1()).redeem(c.user1().address, c.notOwnedToken1().address, notOwnedAmount, nonce, signature)).
+        to.be.revertedWith("redeem: mint call failed");
+
+    })
 });

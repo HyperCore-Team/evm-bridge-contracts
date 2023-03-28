@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
@@ -40,9 +40,9 @@ contract Bridge is Context {
     event PendingGuardians();
     event SetGuardians();
 
-    uint256 constant uint256max = type(uint256).max;
-    uint32 private constant networkClass = 2;
-    uint8 private constant  minNominatedGuardians = 5;
+    uint256 private immutable uint256max = type(uint256).max;
+    uint32 private immutable networkClass = 2;
+    uint8 private immutable  minNominatedGuardians = 5;
 
     uint64 public estimatedBlockTime;
     uint64 public confirmationsToFinality;
@@ -106,7 +106,7 @@ contract Bridge is Context {
         contractDeploymentHeight = block.number;
     }
 
-    function isHalted() view public returns (bool) {
+    function isHalted() public view returns (bool) {
         return halted || (unhaltedAt + unhaltDuration >= block.number);
     }
 
@@ -135,7 +135,7 @@ contract Bridge is Context {
             redeemsInfo[nonce].blockNumber = uint256max;
             // if the bridge has ownership of the token then it means that this token is wrapped and it should have mint rights on it
             if (tokensInfo[token].owned) {
-                // bridge should have 0 balance of this wrapped token, they are only distributed to people, unless someone sent to this contract
+                // bridge should have 0 balance of this wrapped token unless someone sent to this contract
                 // mint the needed amount
                 bytes memory payload = abi.encodeWithSignature("mint(uint256)", amount);
                 (bool success, ) = token.call(payload);
@@ -163,17 +163,10 @@ contract Bridge is Context {
         require(newBalance - amount == oldBalance, "unwrap: Tokens not sent");
 
         // if we have ownership to this token, we will burn because we can mint on redeem, otherwise we just keep the tokens
-        // double check the ownership so we don't burn in case owned is set to true by mistake
         if (tokensInfo[token].owned) {
-            try Ownable(token).owner() returns (address owner) {
-                if(owner == address(this)) {
-                    bytes memory payload = abi.encodeWithSignature("burn(uint256)", amount);
-                    (bool success, ) = token.call(payload);
-                    require(success, "unwrap: Burn call failed");
-                }
-            } catch {
-                revert("unwrap: Owner call failed");
-            }
+            bytes memory payload = abi.encodeWithSignature("burn(uint256)", amount);
+            (bool success, ) = token.call(payload);
+            require(success, "unwrap: Burn call failed");
         }
         emit Unwrapped(_msgSender(), token, to, amount);
     }
