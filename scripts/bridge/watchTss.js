@@ -6,7 +6,7 @@ const fs = require('fs');
 const homedir = require('os').homedir();
 
 async function change() {
-    let configPath = homedir + '/.node/config.json';
+    let configPath = homedir + '/.orchestrator/config.json';
     fs.watchFile(configPath, async function (event, filename) {
         let configFile = fs.readFileSync(configPath);
         let configData = JSON.parse(configFile);
