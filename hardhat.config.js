@@ -21,6 +21,9 @@ task("accounts", "Prints the list of accounts", async () => {
  */
 module.exports = {
   networks: {
+    docker: {
+      "url": "http://172.20.0.253:8545"
+    },
     hardhat: {
       loggingEnabled: true,
       mining: {
