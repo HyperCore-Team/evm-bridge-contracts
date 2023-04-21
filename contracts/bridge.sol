@@ -119,8 +119,7 @@ contract Bridge is Context {
         if (redeemsInfo[nonce].blockNumber == 0) {
             // We only check the signature at the first redeem, on the second one we have only a check for the same parameters
             // In case the tss key is changed, we don't need to resign the transaction for the second redeem
-            // todo change to block.chainId
-            bytes32 messageHash = keccak256(abi.encode(networkClass, uint256(31337), address(this), nonce, to, token, amount));
+            bytes32 messageHash = keccak256(abi.encode(networkClass, block.chainid, address(this), nonce, to, token, amount));
             messageHash = messageHash.toEthSignedMessageHash();
             address signer = messageHash.recover(signature);
             require(signer == tss, "redeem: Wrong signature");
@@ -137,14 +136,13 @@ contract Bridge is Context {
             if (tokensInfo[token].owned) {
                 // bridge should have 0 balance of this wrapped token unless someone sent to this contract
                 // mint the needed amount
-                bytes memory payload = abi.encodeWithSignature("mint(uint256)", amount);
+                bytes memory payload = abi.encodeWithSignature("mint(address,uint256)", to, amount);
                 (bool success, ) = token.call(payload);
                 require(success, "redeem: mint call failed");
+            } else {
+                // if we do not own the token it means it is probably originating from this network so we should have locked tokens here
+                IERC20(token).safeTransfer(to, amount);
             }
-            // if we do not own the token it means it is probably originating from this network so we should have locked tokens here
-            // even if we minted or not, we send the amount
-            IERC20(token).safeTransfer(to, amount);
-
             emit Redeemed(nonce, to, token, amount);
         }
     }
@@ -206,8 +204,7 @@ contract Bridge is Context {
 
     function halt(bytes memory signature) external {
         if (_msgSender() != administrator) {
-            // todo change to block.chainid
-            bytes32 messageHash = keccak256(abi.encode("halt", networkClass, uint256(31337), address(this), actionsNonce));
+            bytes32 messageHash = keccak256(abi.encode("halt", networkClass, block.chainid, address(this), actionsNonce));
             messageHash = messageHash.toEthSignedMessageHash();
             address signer = messageHash.recover(signature);
             require(signer == tss, "halt: Wrong signature");
@@ -258,8 +255,7 @@ contract Bridge is Context {
             require(!isHalted(), "setTss: Bridge halted");
             allowKeyGen = false;
 
-            // todo change to block.chainId
-            bytes32 messageHash = keccak256(abi.encode("setTss", networkClass, uint256(31337), address(this), actionsNonce, newTss));
+            bytes32 messageHash = keccak256(abi.encode("setTss", networkClass, block.chainid, address(this), actionsNonce, newTss));
             messageHash = messageHash.toEthSignedMessageHash();
             address signer = messageHash.recover(oldSignature);
             require(signer == tss, "setTss: Wrong old signature");
