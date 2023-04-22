@@ -150,9 +150,6 @@ contract Bridge is Context {
     function unwrap(address token, uint256 amount, string memory to) external isNotHalted {
         require(tokensInfo[token].bridgeable, "unwrap: Token not bridgeable");
         require(amount >= tokensInfo[token].minAmount, "unwrap: Amount has to be greater then the token minAmount");
-        // In case a user inserts the wrong address length this won't work, in case someone inserts characters encoded from multiple
-        // bytes the orchestrator won't process it and even if so, he won't be able to redeem it on the znn network
-        require(bytes(to).length == 40, "unwrap: Invalid NoM address length");
 
         uint256 oldBalance = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(_msgSender(), address(this), amount);

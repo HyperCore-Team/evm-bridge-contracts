@@ -36,20 +36,6 @@ describe("Unwrap", function () {
         to.be.revertedWith("unwrap: Amount has to be greater then the token minAmount");
     })
 
-    it("Should not be able to unwrap with invalid NoM address length", async function () {
-        let address = ""
-        await expect(c.bridge().connect(c.user1()).unwrap(c.ownedToken1().address, ownedAmount, address)).
-        to.be.revertedWith("unwrap: Invalid NoM address length");
-
-        address = c.znnAddress.substring(0,39)
-        await expect(c.bridge().connect(c.user1()).unwrap(c.ownedToken1().address, ownedAmount, address)).
-        to.be.revertedWith("unwrap: Invalid NoM address length");
-
-        address = c.znnAddress + "abcdef"
-        await expect(c.bridge().connect(c.user1()).unwrap(c.ownedToken1().address, ownedAmount, address)).
-        to.be.revertedWith("unwrap: Invalid NoM address length");
-    })
-
     it("Should not be able to unwrap without allowance", async function () {
         await expect(c.bridge().connect(c.user1()).unwrap(c.ownedToken1().address, ownedAmount, c.znnAddress)).
         to.be.revertedWith("BEP20: transfer amount exceeds allowance");
