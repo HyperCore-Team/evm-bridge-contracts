@@ -3,12 +3,6 @@ const { expect } = require("chai");
 const {BigNumber} = require("ethers");
 const c = require("./constants.js");
 
-const {
-    defaultAbiCoder: abiCoder,
-    arrayify,
-    keccak256,
-} = ethers.utils;
-
 describe("Redeem", function() {
     let minAmountOwned = ethers.utils.parseUnits("0.01", 8);
     let ownedAmount = ethers.utils.parseUnits("50", 8);
@@ -120,7 +114,7 @@ describe("Redeem", function() {
 
         await c.mineBlocks(16);
         await expect(c.bridge().connect(c.user1()).redeem(c.user1().address, c.notOwnedToken1().address, notOwnedAmount, nonce, signature)).
-        to.be.revertedWith("redeem: mint call failed");
+        to.be.revertedWith("Ownable: caller is not the owner");
 
     })
 });

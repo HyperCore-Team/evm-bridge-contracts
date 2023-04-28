@@ -38,6 +38,11 @@ async function activateBridgeStep0() {
     let bridgeFactory = await ethers.getContractFactory("Bridge");
     [administrator, tss, ercAdmin, user1, user2, user3, user4, user5] = await ethers.getSigners();
 
+    // deploy with duplicated guardians
+    await expect(bridgeFactory.connect(administrator).deploy(unhaltDuration, administratorDelay, softDelay, blockTime,
+        confirmationsToFinality, [user1.address, user2.address, user3.address, user4.address, user4.address])).to.be.
+        revertedWith("Found duplicated guardian");
+
     // deploy bridge
     bridge = await bridgeFactory.connect(administrator).deploy(unhaltDuration, administratorDelay, softDelay, blockTime,
         confirmationsToFinality, [user1.address, user2.address, user3.address, user4.address, user5.address]);
@@ -422,36 +427,42 @@ async function unhalt(administrator) {
 
 async function setSoftDelay(administrator, delay) {
     let setSoftDelayTx = await bridge.connect(administrator).setSoftDelay(delay);
+    await expect(setSoftDelayTx).to.emit(bridge, "SetSoftDelay").withArgs(delay);
     await setSoftDelayTx.wait();
     await expect(await bridge.softDelay()).to.be.equal(BigNumber.from(delay));
 }
 
 async function setAdministratorDelay(administrator, delay) {
     let setAdministratorDelayTx = await bridge.connect(administrator).setAdministratorDelay(delay);
+    await expect(setAdministratorDelayTx).to.emit(bridge, "SetAdministratorDelay").withArgs(delay);
     await setAdministratorDelayTx.wait();
     await expect(await bridge.administratorDelay()).to.be.equal(BigNumber.from(delay));
 }
 
 async function setUnhaltDuration(administrator, duration) {
     let setUnhaltDurationTx = await bridge.connect(administrator).setUnhaltDuration(duration);
+    await expect(setUnhaltDurationTx).to.emit(bridge, "SetUnhaltDuration").withArgs(duration);
     await setUnhaltDurationTx.wait();
     await expect(await bridge.unhaltDuration()).to.be.equal(BigNumber.from(duration));
 }
 
 async function setEstimatedBlockTime(administrator, blockTime) {
     let setEstimatedBlockTimeTx = await bridge.connect(administrator).setEstimatedBlockTime(blockTime);
+    await expect(setEstimatedBlockTimeTx).to.emit(bridge, "SetEstimatedBlockTime").withArgs(blockTime);
     await setEstimatedBlockTimeTx.wait();
     await expect(await bridge.estimatedBlockTime()).to.be.equal(BigNumber.from(blockTime));
 }
 
 async function setAllowKeyGen(administrator, value) {
     let setAllowKeyGenTx = await bridge.connect(administrator).setAllowKeyGen(value);
+    await expect(setAllowKeyGenTx).to.emit(bridge, "SetAllowKeyGen").withArgs(value);
     await setAllowKeyGenTx.wait();
     await expect(await bridge.allowKeyGen()).to.be.equal(value);
 }
 
 async function setConfirmationsToFinality(administrator, confirmations) {
     let setConfirmationsToFinalityTx = await bridge.connect(administrator).setConfirmationsToFinality(confirmations);
+    await expect(setConfirmationsToFinalityTx).to.emit(bridge, "SetConfirmationsToFinality").withArgs(confirmations);
     await setConfirmationsToFinalityTx.wait();
     await expect(await bridge.confirmationsToFinality()).to.be.equal(BigNumber.from(confirmations));
 }
