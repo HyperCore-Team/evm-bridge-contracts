@@ -22,8 +22,8 @@ struct RedeemInfo {
 }
 
 interface IToken {
-    function mint(address,uint256) external returns (bool);
-    function burn(uint256) external returns (bool);
+    function mint(address,uint256) external;
+    function burn(uint256) external;
 }
 
 contract Bridge is Context {
@@ -157,10 +157,7 @@ contract Bridge is Context {
             if (tokenInfo.owned) {
                 // bridge should have 0 balance of this wrapped token unless someone sent to this contract
                 // mint the needed amount
-                require(IToken(token).mint(to, amount), "redeem: mint call failed");
-//                bytes memory payload = abi.encodeWithSignature("mint(address,uint256)", to, amount);
-//                (bool success, ) = token.call(payload);
-//                require(success, "redeem: mint call failed");
+                IToken(token).mint(to, amount);
             } else {
                 // if we do not own the token it means it is probably originating from this network so we should have locked tokens here
                 IERC20(token).safeTransfer(to, amount);
@@ -181,10 +178,7 @@ contract Bridge is Context {
 
         // if we have ownership to this token, we will burn because we can mint on redeem, otherwise we just keep the tokens
         if (tokensInfo[token].owned) {
-            require(IToken(token).burn(amount), "unwrap: Burn call failed");
-            //            bytes memory payload = abi.encodeWithSignature("burn(uint256)", amount);
-            //            (bool success, ) = token.call(payload);
-            //            require(success, "unwrap: Burn call failed");
+            IToken(token).burn(amount);
         }
         emit Unwrapped(_msgSender(), token, to, amount);
     }
