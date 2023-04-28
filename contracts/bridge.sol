@@ -61,10 +61,12 @@ contract Bridge is Context {
     bool public allowKeyGen;
 
     address public administrator;
+    // Should be set greater than 72h
     uint256 public administratorDelay;
     uint256 public immutable minAdministratorDelay;
 
     address public tss;
+    // Should be set greater than 72h
     uint256 public softDelay;
     uint256 public immutable minSoftDelay;
 
