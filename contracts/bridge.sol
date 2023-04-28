@@ -21,6 +21,7 @@ struct RedeemInfo {
     bytes32 paramsHash;
 }
 
+// When calling mint / burn, we assume that the token is a representation of a wrapped asset and is deployed and / or audited by the admin
 interface IToken {
     function mint(address,uint256) external;
     function burn(uint256) external;
