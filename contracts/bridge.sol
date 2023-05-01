@@ -52,9 +52,9 @@ contract Bridge is Context {
     event SetAllowKeyGen(bool);
     event SetConfirmationsToFinality(uint64);
 
-    uint256 private immutable uint256max = type(uint256).max;
-    uint32 private immutable networkClass = 2;
-    uint8 private immutable  minNominatedGuardians = 5;
+    uint256 private constant uint256max = type(uint256).max;
+    uint32 private constant networkClass = 2;
+    uint8 private constant  minNominatedGuardians = 5;
 
     uint64 public estimatedBlockTime;
     uint64 public confirmationsToFinality;
