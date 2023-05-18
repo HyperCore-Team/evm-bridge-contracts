@@ -9,9 +9,9 @@ async function deploy() {
     await constants.printBalance(owner.address);
 
     const Proxy = await ethers.getContractFactory("LiquidityProxy");
-    let RouterAddress = ""
+    let routerAddress = ""
     let wZNNAddress = ""
-    const proxy = await Proxy.connect(owner).deploy(RouterAddress, wZNNAddress);
+    const proxy = await Proxy.connect(owner).deploy(routerAddress, wZNNAddress);
     await proxy.deployed();
 
     console.log("Proxy address: ", proxy.address);
