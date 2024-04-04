@@ -85,6 +85,8 @@ contract Bridge is Context {
     mapping(address => TokenInfo) public tokensInfo;
     mapping(string => RedeemInfo) public timeChallengesInfo;
 
+    address public immutable wXZNN;
+
     modifier isNotHalted() {
         require(!isHalted(), "bridge: Is halted");
         _;
@@ -95,9 +97,11 @@ contract Bridge is Context {
         _;
     }
 
-    constructor(uint256 unhaltDurationParam, uint256 administratorDelayParam, uint256 softDelayParam, uint64 blockTime, uint64 confirmations, address[] memory initialGuardians) {
+    constructor(uint256 unhaltDurationParam, uint256 administratorDelayParam, uint256 softDelayParam, uint64 blockTime, uint64 confirmations, address[] memory initialGuardians, address wxZNN) {
         require(blockTime > 0, "BlockTime is less than minimum");
         require(confirmations > 1, "Confirmations is less than minimum");
+
+        wXZNN = wxZNN;
 
         administrator = _msgSender();
         emit SetAdministrator(administrator, address(0));
@@ -169,12 +173,13 @@ contract Bridge is Context {
     }
 
     function redeemNative(address to, address token, uint256 amount, uint256 nonce, bytes memory signature) external isNotHalted {
+        require(token == wXZNN, "redeemNative: Can only redeem wXZNN");
         // We use local variables for gas optimisation and also we don't use the redeemInfo variable anymore after updating the mapping entry
         RedeemInfo memory redeemInfo = redeemsInfo[nonce];
         TokenInfo memory tokenInfo = tokensInfo[token];
-        require(tokenInfo.redeemable, "redeem: Token not redeemable");
-        require(redeemInfo.blockNumber != uint256max, "redeem: Nonce already redeemed");
-        require((redeemInfo.blockNumber + tokenInfo.redeemDelay) < block.number, "redeem: Not redeemable yet");
+        require(tokenInfo.redeemable, "redeemNative: Token not redeemable");
+        require(redeemInfo.blockNumber != uint256max, "redeemNative: Nonce already redeemed");
+        require((redeemInfo.blockNumber + tokenInfo.redeemDelay) < block.number, "redeemNative: Not redeemable yet");
 
         if (redeemInfo.blockNumber == 0) {
             // We only check the signature at the first redeem, on the second one we have only a check for the same parameters
@@ -182,19 +187,19 @@ contract Bridge is Context {
             bytes32 messageHash = keccak256(abi.encode(networkClass, block.chainid, address(this), nonce, to, token, amount));
             messageHash = messageHash.toEthSignedMessageHash();
             address signer = messageHash.recover(signature);
-            require(signer == tss, "redeem: Wrong signature");
+            require(signer == tss, "redeemNative: Wrong signature");
 
             redeemsInfo[nonce].blockNumber = block.number;
             redeemsInfo[nonce].paramsHash = keccak256(abi.encode(to, token, amount));
             emit RegisteredRedeem(nonce, to, token, amount);
         } else {
-            require(redeemsInfo[nonce].paramsHash == keccak256(abi.encode(to, token, amount)), "redeem: Second redeem has different params than the first one");
+            require(redeemsInfo[nonce].paramsHash == keccak256(abi.encode(to, token, amount)), "redeemNative: Second redeem has different params than the first one");
 
             // it cannot be uint256max or in delay
             redeemsInfo[nonce].blockNumber = uint256max;
 
             (bool success, ) = payable(to).call{value: amount}(new bytes(0));
-            require(success, 'redeem: ETH transfer failed');
+            require(success, 'redeemNative: ETH transfer failed');
 
             emit Redeemed(nonce, to, token, amount);
         }
@@ -217,10 +222,10 @@ contract Bridge is Context {
         emit Unwrapped(_msgSender(), token, to, amount);
     }
 
-    function unwrapNative(address token, uint256 amount, string memory to) external payable isNotHalted {
-        require(tokensInfo[token].bridgeable, "unwrap: Token not bridgeable");
-        require(msg.value >= tokensInfo[token].minAmount, "unwrap: Amount has to be greater then the token minAmount");
-        emit Unwrapped(_msgSender(), token, to, amount);
+    function unwrapNative(uint256 amount, string memory to) external payable isNotHalted {
+        require(tokensInfo[wXZNN].bridgeable, "unwrapNative: Token not bridgeable");
+        require(msg.value >= tokensInfo[wXZNN].minAmount, "unwrapNative: Amount has to be greater then the token minAmount");
+        emit Unwrapped(_msgSender(), wXZNN, to, amount);
     }
 
     function timeChallenge(string memory methodName, bytes32 paramsHash, uint256 challengeDelay) internal {
