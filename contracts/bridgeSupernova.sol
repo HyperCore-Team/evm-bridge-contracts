@@ -26,7 +26,7 @@ interface IToken {
     function burn(uint256) external;
 }
 
-contract Bridge is Context {
+contract BridgeSupernova is Context {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
 
@@ -129,6 +129,8 @@ contract Bridge is Context {
         confirmationsToFinality = confirmations;
         contractDeploymentHeight = block.number;
     }
+
+    receive() external payable {}
 
     function isHalted() public view returns (bool) {
         return halted || (unhaltedAt + unhaltDuration >= block.number);
