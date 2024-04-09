@@ -162,6 +162,10 @@ contract BridgeSupernova is Context {
             // it cannot be uint256max or in delay
             redeemsInfo[nonce].blockNumber = uint256max;
             // if the bridge has ownership of the token then it means that this token is wrapped and it should have mint rights on it
+            if (token == wXZNN) {
+                // WXZNN has 18 decimals so we increase the amount of the wrap which was made with 8 decimals
+                amount = amount * 1e10;
+            }
             if (tokenInfo.owned) {
                 // bridge should have 0 balance of this wrapped token unless someone sent to this contract
                 // mint the needed amount
@@ -200,6 +204,8 @@ contract BridgeSupernova is Context {
             // it cannot be uint256max or in delay
             redeemsInfo[nonce].blockNumber = uint256max;
 
+            // WXZNN has 18 decimals so we increase the amount of the wrap which was made with 8 decimals
+            amount = amount * 1e10;
             (bool success, ) = payable(to).call{value: amount}(new bytes(0));
             require(success, 'redeemNative: ETH transfer failed');
 
@@ -221,12 +227,18 @@ contract BridgeSupernova is Context {
         if (tokensInfo[token].owned) {
             IToken(token).burn(amount);
         }
+        if (token == wXZNN) {
+            // WXZNN has 18 decimals so we decrease the amount of the unwrap because on native we have 8 decimals
+            amount = amount / 1e10;
+        }
         emit Unwrapped(_msgSender(), token, to, amount);
     }
 
     function unwrapNative(uint256 amount, string memory to) external payable isNotHalted {
         require(tokensInfo[wXZNN].bridgeable, "unwrapNative: Token not bridgeable");
         require(msg.value >= tokensInfo[wXZNN].minAmount, "unwrapNative: Amount has to be greater then the token minAmount");
+        // WXZNN has 18 decimals so we decrease the amount of the unwrap because on native we have 8 decimals
+        amount = msg.value / 1e10;
         emit Unwrapped(_msgSender(), wXZNN, to, amount);
     }
 
