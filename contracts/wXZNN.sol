@@ -19,9 +19,9 @@
 
 pragma solidity ^0.4.18;
 
-contract XZNN9 {
-    string public name     = "Wrapped xZenon";
-    string public symbol   = "WXZNN";
+contract WXZNN9 {
+    string public name     = "Wrapped xZNN";
+    string public symbol   = "wxZNN";
     uint8  public decimals = 18;
 
     event  Approval(address indexed src, address indexed guy, uint wad);

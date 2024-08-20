@@ -138,6 +138,7 @@ contract BridgeSupernova is Context {
 
     // implement restrictions for amount
     function redeem(address to, address token, uint256 amount, uint256 nonce, bytes memory signature) external isNotHalted {
+        require(token != wXZNN, "redeemNative: Can not redeem wXZNN");
         // We use local variables for gas optimisation and also we don't use the redeemInfo variable anymore after updating the mapping entry
         RedeemInfo memory redeemInfo = redeemsInfo[nonce];
         TokenInfo memory tokenInfo = tokensInfo[token];
@@ -162,10 +163,6 @@ contract BridgeSupernova is Context {
             // it cannot be uint256max or in delay
             redeemsInfo[nonce].blockNumber = uint256max;
             // if the bridge has ownership of the token then it means that this token is wrapped and it should have mint rights on it
-            if (token == wXZNN) {
-                // WXZNN has 18 decimals so we increase the amount of the wrap which was made with 8 decimals
-                amount = amount * 1e10;
-            }
             if (tokenInfo.owned) {
                 // bridge should have 0 balance of this wrapped token unless someone sent to this contract
                 // mint the needed amount
@@ -178,11 +175,10 @@ contract BridgeSupernova is Context {
         }
     }
 
-    function redeemNative(address to, address token, uint256 amount, uint256 nonce, bytes memory signature) external isNotHalted {
-        require(token == wXZNN, "redeemNative: Can only redeem wXZNN");
+    function redeemNative(address to, uint256 amount, uint256 nonce, bytes memory signature) external isNotHalted {
         // We use local variables for gas optimisation and also we don't use the redeemInfo variable anymore after updating the mapping entry
         RedeemInfo memory redeemInfo = redeemsInfo[nonce];
-        TokenInfo memory tokenInfo = tokensInfo[token];
+        TokenInfo memory tokenInfo = tokensInfo[wXZNN];
         require(tokenInfo.redeemable, "redeemNative: Token not redeemable");
         require(redeemInfo.blockNumber != uint256max, "redeemNative: Nonce already redeemed");
         require((redeemInfo.blockNumber + tokenInfo.redeemDelay) < block.number, "redeemNative: Not redeemable yet");
@@ -190,16 +186,16 @@ contract BridgeSupernova is Context {
         if (redeemInfo.blockNumber == 0) {
             // We only check the signature at the first redeem, on the second one we have only a check for the same parameters
             // In case the tss key is changed, we don't need to resign the transaction for the second redeem
-            bytes32 messageHash = keccak256(abi.encode(networkClass, block.chainid, address(this), nonce, to, token, amount));
+            bytes32 messageHash = keccak256(abi.encode(networkClass, block.chainid, address(this), nonce, to, wXZNN, amount));
             messageHash = messageHash.toEthSignedMessageHash();
             address signer = messageHash.recover(signature);
             require(signer == tss, "redeemNative: Wrong signature");
 
             redeemsInfo[nonce].blockNumber = block.number;
-            redeemsInfo[nonce].paramsHash = keccak256(abi.encode(to, token, amount));
-            emit RegisteredRedeem(nonce, to, token, amount);
+            redeemsInfo[nonce].paramsHash = keccak256(abi.encode(to, wXZNN, amount));
+            emit RegisteredRedeem(nonce, to, wXZNN, amount);
         } else {
-            require(redeemsInfo[nonce].paramsHash == keccak256(abi.encode(to, token, amount)), "redeemNative: Second redeem has different params than the first one");
+            require(redeemsInfo[nonce].paramsHash == keccak256(abi.encode(to, wXZNN, amount)), "redeemNative: Second redeem has different params than the first one");
 
             // it cannot be uint256max or in delay
             redeemsInfo[nonce].blockNumber = uint256max;
@@ -209,11 +205,12 @@ contract BridgeSupernova is Context {
             (bool success, ) = payable(to).call{value: amount}(new bytes(0));
             require(success, 'redeemNative: ETH transfer failed');
 
-            emit Redeemed(nonce, to, token, amount);
+            emit Redeemed(nonce, to, wXZNN, amount);
         }
     }
 
     function unwrap(address token, uint256 amount, string memory to) external isNotHalted {
+        require(token != wXZNN, "redeemNative: Can not unwrap wXZNN");
         require(tokensInfo[token].bridgeable, "unwrap: Token not bridgeable");
         require(amount >= tokensInfo[token].minAmount, "unwrap: Amount has to be greater then the token minAmount");
 
@@ -227,18 +224,15 @@ contract BridgeSupernova is Context {
         if (tokensInfo[token].owned) {
             IToken(token).burn(amount);
         }
-        if (token == wXZNN) {
-            // WXZNN has 18 decimals so we decrease the amount of the unwrap because on native we have 8 decimals
-            amount = amount / 1e10;
-        }
         emit Unwrapped(_msgSender(), token, to, amount);
     }
 
-    function unwrapNative(uint256 amount, string memory to) external payable isNotHalted {
+    function unwrapNative(string memory to) external payable isNotHalted {
         require(tokensInfo[wXZNN].bridgeable, "unwrapNative: Token not bridgeable");
         require(msg.value >= tokensInfo[wXZNN].minAmount, "unwrapNative: Amount has to be greater then the token minAmount");
+
         // WXZNN has 18 decimals so we decrease the amount of the unwrap because on native we have 8 decimals
-        amount = msg.value / 1e10;
+        uint256 amount = msg.value / 1e10;
         emit Unwrapped(_msgSender(), wXZNN, to, amount);
     }
 
